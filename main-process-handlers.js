@@ -70,25 +70,55 @@ ipcMain.handle('git:pull', async (event, repoPath) => {
   }
 });
 
-// Push changes - SIMPLE AND DIRECT
+// Push changes - Original working logic
 ipcMain.handle('git:push', async (event, repoPath) => {
   try {
-    // Direct push
-    const result = await runGit(['push'], repoPath);
-    return { success: true, result: result || 'Push completed' };
-  } catch (error) {
-    const err = error.message.toLowerCase();
-
-    // Auto-set upstream if needed
-    if (err.includes('upstream') || err.includes('set-upstream')) {
-      try {
-        const result = await runGit(['push', '-u', 'origin', 'HEAD'], repoPath);
-        return { success: true, result: result || 'Push completed' };
-      } catch (e) {
-        return { success: false, error: e.message };
-      }
+    // Check if remote exists
+    let remotes;
+    try {
+      remotes = await runGit(['remote'], repoPath);
+    } catch (e) {
+      remotes = '';
     }
 
+    if (!remotes || !remotes.includes('origin')) {
+      return { success: false, error: 'No remote repository configured. Add a remote first.' };
+    }
+
+    // Check the current branch
+    let branch;
+    try {
+      branch = await runGit(['branch', '--show-current'], repoPath);
+      if (!branch) {
+        branch = 'HEAD'; // fallback for detached HEAD state
+      }
+    } catch (branchError) {
+      branch = 'HEAD'; // fallback
+    }
+
+    // Try to push with set-upstream if needed
+    try {
+      const result = await runGit(['push', '--set-upstream', 'origin', branch], repoPath);
+      return { success: true, result };
+    } catch (pushError) {
+      // If the above fails, try a simple push
+      try {
+        const simpleResult = await runGit(['push'], repoPath);
+        return { success: true, result: simpleResult };
+      } catch (simpleError) {
+        // Determine the specific error reason
+        const errMsg = simpleError.message.toLowerCase();
+        if (errMsg.includes('upstream')) {
+          return { success: false, error: 'Branch has no upstream. Set upstream first.' };
+        } else if (errMsg.includes('denied')) {
+          return { success: false, error: 'Push denied. Check your authentication.' };
+        } else if (errMsg.includes('rejected')) {
+          return { success: false, error: 'Push rejected. Pull changes first.' };
+        }
+        return { success: false, error: simpleError.message };
+      }
+    }
+  } catch (error) {
     return { success: false, error: error.message };
   }
 });
