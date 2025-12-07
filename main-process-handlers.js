@@ -66,7 +66,13 @@ ipcMain.handle('git:pull', async (event, repoPath) => {
     const result = await runGitStream(['pull', '--progress'], repoPath);
     return { success: true, result: result.output || 'Pull completed' };
   } catch (error) {
-    return { success: false, error: classifyGitError(error.message), details: error.message };
+    const errorType = classifyGitError(error.message);
+    return { 
+      success: false, 
+      error: getHumanReadableError(errorType, error.message),
+      errorType,
+      details: error.message 
+    };
   }
 });
 
