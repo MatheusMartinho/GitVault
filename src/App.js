@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
+import logo from '../public/gitVault.png';
 
 function App() {
   const [repositories, setRepositories] = useState([]);
@@ -248,7 +249,7 @@ function App() {
     <div className="app">
       {/* Header */}
       <header className="app-header">
-        <h1>GitVault</h1>
+        <img src={logo} alt="GitVault" style={{ height: '120px' }} />
         <div className="header-actions">
           <button onClick={() => addRepository()}>Add Repository</button>
           {updateStatus.available && updateStatus.version && !updateStatus.downloaded && (
@@ -292,14 +293,14 @@ function App() {
           <h2>Repositories</h2>
           <ul className="repository-list">
             {repositories.map((repo) => (
-              <li 
-                key={repo.path} 
+              <li
+                key={repo.path}
                 className={activeRepo && activeRepo.path === repo.path ? 'active' : ''}
                 onClick={() => selectRepository(repo)}
               >
                 <span className="repo-name">{repo.name}</span>
-                <button 
-                  className="remove-btn" 
+                <button
+                  className="remove-btn"
                   onClick={(e) => {
                     e.stopPropagation();
                     removeRepository(repo.path);
