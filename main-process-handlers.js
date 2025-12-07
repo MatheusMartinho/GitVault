@@ -63,7 +63,7 @@ function runGit(args, cwd, timeout = 60000) {
 // Pull changes using spawn for streaming (memory efficient)
 ipcMain.handle('git:pull', async (event, repoPath) => {
   try {
-    const result = await runGitStream(['pull', '--progress'], repoPath);
+    const result = await runGitStream(['pull', '--no-rebase', '--progress'], repoPath);
     return { success: true, result: result.output || 'Pull completed' };
   } catch (error) {
     const errorType = classifyGitError(error.message);
