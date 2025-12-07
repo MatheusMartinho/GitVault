@@ -215,9 +215,9 @@ Contribuições são o que fazem a comunidade open source ser tão incrível. Qu
 ## 💬 Contato
 
 - **Autor**: Lingma
-- **GitHub**: [seu-usuario](https://github.com/seu-usuario)
-- **Email**: seu.email@exemplo.com
-- **Website**: https://gitvault.io (fictício)
+- **GitHub**: [seu-usuario]([https://github.com/seu-usuario](https://github.com/MatheusMartinho))
+- **Email**: matheusmouramartinho@yahoo.com
+- **Website**: 
 
 ## 🙏 Agradecimentos
 
@@ -232,8 +232,8 @@ Contribuições são o que fazem a comunidade open source ser tão incrível. Qu
 
 **⭐ Se você achou o GitVault útil, dê uma estrela e compartilhe com outros desenvolvedores!** 
 
-<a href="https://github.com/seu-usuario/gitvault">GitHub</a> • 
-<a href="mailto:seu.email@exemplo.com">Contato</a> • 
+<a href="https://github.com/MatheusMartinho">GitHub</a> • 
+<a href="mailto:matheusmouramartinho@yahoo.com">Contato</a> • 
 <a href="https://gitvault.io">Website</a>
 
 </div>
