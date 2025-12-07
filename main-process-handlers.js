@@ -185,7 +185,19 @@ ipcMain.handle('git:push', async (event, repoPath) => {
 
     // Check if the error is about rejected push (need to pull first)
     if (error.message.toLowerCase().includes('rejected') || error.message.toLowerCase().includes('non-fast-forward')) {
-      return { success: false, error: 'Push rejected. Pull changes first.' };
+      // Try to pull first and then push again
+      try {
+        // Pull with rebase to avoid merge commits
+        const pullCommand = `git pull --rebase origin ${branch}`;
+        await executeGitCommand(pullCommand, repoPath);
+
+        // Now try to push again
+        const retryCommand = `git push origin ${branch}`;
+        const retryResult = await executeGitCommand(retryCommand, repoPath);
+        return { success: true, result: retryResult };
+      } catch (pullError) {
+        return { success: false, error: `Push rejected. Pull failed: ${pullError.message}. Manual intervention required.` };
+      }
     }
 
     // Check if the error is about authentication
