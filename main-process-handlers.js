@@ -1,5 +1,5 @@
 const { ipcMain, dialog } = require('electron');
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
@@ -35,144 +35,85 @@ async function saveRepositories(repositories) {
   }
 }
 
-// Execute a Git command with timeout support
+// Execute Git command using spawn (memory efficient, no buffering)
 function executeGitCommand(command, cwd, timeout = 30000) {
   return new Promise((resolve, reject) => {
-    const options = {
-      cwd,
-      timeout,
-      maxBuffer: 1024 * 1024 * 10, // 10MB buffer for large outputs
-      killSignal: 'SIGTERM'
-    };
+    const args = command.split(' ').slice(1); // Remove 'git' from command
+    const gitCommand = command.split(' ')[0]; // Should be 'git'
 
-    exec(command, options, (error, stdout, stderr) => {
-      if (error) {
-        if (error.killed || error.signal === 'SIGTERM') {
-          reject(new Error(`Command timed out after ${timeout}ms`));
-        } else {
-          reject(new Error(stderr || error.message));
-        }
+    let stdout = '';
+    let stderr = '';
+    let killed = false;
+
+    const proc = spawn(gitCommand, args, {
+      cwd,
+      shell: true,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    // Timeout handler
+    const timer = setTimeout(() => {
+      killed = true;
+      proc.kill('SIGTERM');
+    }, timeout);
+
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+
+      if (killed) {
+        reject(new Error('Command timed out'));
         return;
       }
+
+      if (code !== 0) {
+        reject(new Error(stderr || `Git exited with code ${code}`));
+        return;
+      }
+
       resolve(stdout.trim());
+    });
+
+    proc.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
     });
   });
 }
 
-// Pull changes - Professional & Fast Implementation
+// Pull changes - Simple and Fast
 ipcMain.handle('git:pull', async (event, repoPath) => {
   try {
-    // Get current branch fast
-    const branch = await executeGitCommand('git branch --show-current', repoPath, 3000);
-
-    if (!branch || !branch.trim()) {
-      return { success: false, error: 'Not on any branch. Checkout a branch first.' };
-    }
-
-    // Direct pull - Git handles everything
-    const result = await executeGitCommand(
-      `git pull origin ${branch.trim()}`,
-      repoPath,
-      90000 // 90s is enough for most repos
-    );
-
-    return { success: true, result };
-
+    const result = await executeGitCommand('git pull', repoPath, 30000);
+    return { success: true, result: result || 'Pull completed' };
   } catch (error) {
-    const errorMsg = error.message;
-
-    // Smart error handling
-    if (errorMsg.includes('no remote') || errorMsg.includes('does not appear')) {
-      return { success: false, error: 'No remote configured. Add remote first.' };
-    }
-
-    if (errorMsg.includes('uncommitted changes') || errorMsg.includes('would be overwritten')) {
-      return { success: false, error: 'Uncommitted changes would be overwritten. Commit or stash first.' };
-    }
-
-    if (errorMsg.includes('Could not resolve host') || errorMsg.includes('unable to access')) {
-      return { success: false, error: 'Network error. Check connection.' };
-    }
-
-    if (errorMsg.includes('CONFLICT')) {
-      return { success: false, error: 'Merge conflicts detected. Resolve manually.' };
-    }
-
-    return { success: false, error: errorMsg };
+    return { success: false, error: error.message };
   }
 });
 
-// Push changes - Professional & Fast Implementation
+// Push changes - Simple and Fast
 ipcMain.handle('git:push', async (event, repoPath) => {
   try {
-    // Get current branch only (fast, single check)
-    const branch = await executeGitCommand('git branch --show-current', repoPath, 3000);
-
-    if (!branch || !branch.trim()) {
-      return { success: false, error: 'Not on any branch. Checkout a branch first.' };
-    }
-
-    // Direct push - let Git handle all validations (fast!)
-    try {
-      const result = await executeGitCommand(`git push origin ${branch.trim()}`, repoPath, 60000);
-      return { success: true, result };
-    } catch (pushError) {
-      const errorMsg = pushError.message;
-
-      // Auto-setup upstream on first push (common case)
-      if (errorMsg.includes('--set-upstream') || errorMsg.includes('has no upstream')) {
-        const result = await executeGitCommand(
-          `git push --set-upstream origin ${branch.trim()}`,
-          repoPath,
-          60000
-        );
-        return { success: true, result };
-      }
-
-      // Re-throw to outer catch for standard error handling
-      throw pushError;
-    }
+    const result = await executeGitCommand('git push', repoPath, 30000);
+    return { success: true, result: result || 'Push completed' };
   } catch (error) {
-    // Smart error messages based on Git's response
-    const errorMsg = error.message;
-
-    if (errorMsg.includes('reject') || errorMsg.includes('non-fast-forward')) {
-      return {
-        success: false,
-        error: 'Push rejected: Remote has newer commits. Pull first.'
-      };
+    // Try with upstream if needed
+    if (error.message.includes('upstream') || error.message.includes('set-upstream')) {
+      try {
+        const result = await executeGitCommand('git push -u origin HEAD', repoPath, 30000);
+        return { success: true, result: result || 'Push completed' };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
     }
-
-    if (errorMsg.includes('Could not resolve host') || errorMsg.includes('unable to access')) {
-      return {
-        success: false,
-        error: 'Network error: Check your internet connection.'
-      };
-    }
-
-    if (errorMsg.includes('Authentication failed') || errorMsg.includes('denied')) {
-      return {
-        success: false,
-        error: 'Authentication failed: Check your Git credentials.'
-      };
-    }
-
-    if (errorMsg.includes('No configured push destination') || errorMsg.includes('no remote')) {
-      return {
-        success: false,
-        error: 'No remote configured. Add a remote repository first.'
-      };
-    }
-
-    if (errorMsg.includes('timed out')) {
-      return {
-        success: false,
-        error: 'Push timeout: Large repository or slow connection. Try from terminal.'
-      };
-    }
-
-    // Return actual Git error for unexpected cases
-    return { success: false, error: errorMsg };
+    return { success: false, error: error.message };
   }
 });
 
@@ -258,37 +199,15 @@ ipcMain.handle('git:add', async (event, repoPath) => {
   }
 });
 
-// Commit changes - Professional & Fast Implementation
+// Commit changes - Simple
 ipcMain.handle('git:commit', async (event, repoPath, message) => {
   try {
-    // Proper escaping for shell safety
-    const escapedMessage = message
-      .replace(/\\/g, '\\\\')
-      .replace(/"/g, '\\"')
-      .replace(/`/g, '\\`')
-      .replace(/\$/g, '\\$');
-
-    // Direct commit - fast execution
-    const result = await executeGitCommand(
-      `git commit -m "${escapedMessage}"`,
-      repoPath,
-      10000 // 10s is plenty for commits
-    );
-
-    return { success: true, result };
-
+    // Basic escape for quotes
+    const safeMessage = message.replace(/"/g, '\\"');
+    const result = await executeGitCommand(`git commit -m "${safeMessage}"`, repoPath, 10000);
+    return { success: true, result: result || 'Commit completed' };
   } catch (error) {
-    const errorMsg = error.message;
-
-    if (errorMsg.includes('nothing to commit') || errorMsg.includes('no changes added')) {
-      return { success: false, error: 'No staged changes. Stage files first.' };
-    }
-
-    if (errorMsg.includes('Please tell me who you are')) {
-      return { success: false, error: 'Git user not configured. Set user.name and user.email.' };
-    }
-
-    return { success: false, error: errorMsg };
+    return { success: false, error: error.message };
   }
 });
 
