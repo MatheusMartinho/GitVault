@@ -355,7 +355,22 @@ function App() {
                           // Reload repository data to show updated status
                           selectRepository(activeRepo);
                         } else {
-                          showNotification('Error', `Push failed: ${result.error}`);
+                          // If push is rejected due to remote commits, suggest pulling first
+                          if (result.error.includes('Pull changes first') || result.error.includes('newer commits')) {
+                            if (window.confirm('Remote repository has newer commits. Would you like to pull first? This will update your local repository.')) {
+                              const pullResult = await window.electronAPI.gitPull(activeRepo.path);
+                              if (pullResult.success) {
+                                showNotification('Success', 'Pulled changes. You can now push again.');
+                                selectRepository(activeRepo); // Refresh the view
+                              } else {
+                                showNotification('Error', `Pull failed: ${pullResult.error}`);
+                              }
+                            } else {
+                              showNotification('Info', 'Please pull changes manually before pushing.');
+                            }
+                          } else {
+                            showNotification('Error', `Push failed: ${result.error}`);
+                          }
                         }
                       } catch (error) {
                         showNotification('Error', `Push failed: ${error.message}`);
