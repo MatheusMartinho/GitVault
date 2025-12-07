@@ -72,9 +72,13 @@ function App() {
     window.electronAPI.onUpdateError((event, error) => {
       setUpdateStatus(prev => ({
         ...prev,
-        downloading: false
+        downloading: false,
+        available: false // Hide update button if there was an error
       }));
-      showNotification('Update Error', `Failed to update: ${error}`);
+      // Only show notification if it's not a 404 (no updates available)
+      if (!error.includes('404') && !error.includes('not found')) {
+        showNotification('Update Error', `Update check failed: ${error}`);
+      }
     });
 
     return () => {
@@ -180,18 +184,19 @@ function App() {
 
   // Select a repository
   const selectRepository = async (repo) => {
+    if (loading) return; // Prevent concurrent calls
     setLoading(true);
     try {
       setActiveRepo(repo);
-      
+
       // Load branches
       const branchData = await window.electronAPI.gitBranches(repo.path);
       setBranches(branchData);
-      
+
       // Load commits
       const commitData = await window.electronAPI.gitLog(repo.path);
       setCommits(commitData);
-      
+
       // Load changes
       const statusData = await window.electronAPI.gitStatus(repo.path);
       setChanges(statusData);
@@ -322,6 +327,8 @@ function App() {
                         const result = await window.electronAPI.gitPull(activeRepo.path);
                         if (result.success) {
                           showNotification('Success', 'Repository pulled successfully');
+                          // Reload repository data to show updated status
+                          selectRepository(activeRepo);
                         } else {
                           showNotification('Error', `Pull failed: ${result.error}`);
                         }
@@ -335,9 +342,18 @@ function App() {
                   <button
                     onClick={async () => {
                       try {
+                        // First check if there are uncommitted changes
+                        const status = await window.electronAPI.gitStatus(activeRepo.path);
+                        if (status && status.length > 0) {
+                          showNotification('Info', `You have ${status.length} uncommitted change(s). Please commit them first.`);
+                          return;
+                        }
+
                         const result = await window.electronAPI.gitPush(activeRepo.path);
                         if (result.success) {
                           showNotification('Success', 'Repository pushed successfully');
+                          // Reload repository data to show updated status
+                          selectRepository(activeRepo);
                         } else {
                           showNotification('Error', `Push failed: ${result.error}`);
                         }

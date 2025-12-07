@@ -74,11 +74,14 @@
     "extraMetadata": {
       "main": "main.js"
     },
-    "publish": {
-      "provider": "github",
-      "owner": "seu-usuario",
-      "repo": "gitvault"
-    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "seu-usuario",
+        "repo": "gitvault",
+        "vPrefixedTagName": true
+      }
+    ],
     "dmg": {
       "contents": [
         {

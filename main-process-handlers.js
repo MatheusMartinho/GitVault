@@ -122,11 +122,17 @@ ipcMain.handle('git:pull', async (event, repoPath) => {
 // Push changes
 ipcMain.handle('git:push', async (event, repoPath) => {
   try {
+    console.log(`Attempting push to repo: ${repoPath}`);
+
     // First check if there's a remote configured
     try {
-      await executeGitCommand('git remote get-url origin', repoPath);
+      const remotes = await executeGitCommand('git remote', repoPath);
+      console.log(`Available remotes: ${remotes}`);
+      if (!remotes || !remotes.includes('origin')) {
+        return { success: false, error: 'No remote repository named "origin" configured. Add a remote first.' };
+      }
     } catch (remoteError) {
-      // If no remote exists, return error
+      console.error('Remote check failed:', remoteError.message);
       return { success: false, error: 'No remote repository configured. Add a remote first.' };
     }
 
@@ -134,34 +140,61 @@ ipcMain.handle('git:push', async (event, repoPath) => {
     let branch;
     try {
       branch = await executeGitCommand('git branch --show-current', repoPath);
-      if (!branch) {
-        branch = 'HEAD'; // fallback for detached HEAD state
+      console.log(`Current branch: ${branch}`);
+      if (!branch || branch.trim() === '') {
+        // If we're in detached HEAD state, we can't push
+        return { success: false, error: 'Cannot push from detached HEAD state. Please checkout a branch.' };
       }
+      branch = branch.trim();
     } catch (branchError) {
-      branch = 'HEAD'; // fallback
+      console.error('Branch check failed:', branchError.message);
+      return { success: false, error: 'Error determining current branch.' };
     }
 
-    // Try to push with set-upstream if needed
-    const command = `git push --set-upstream origin ${branch}`;
+    // Execute the push command
+    const command = `git push origin ${branch}`;
+    console.log(`Executing command: ${command}`);
     const result = await executeGitCommand(command, repoPath);
+    console.log(`Push result: ${result}`);
     return { success: true, result };
+
   } catch (error) {
-    // If the above fails, try a simple push
+    console.error('Push failed with error:', error.message);
+
+    // Check if the error is because there are uncommitted changes
     try {
-      const simpleCommand = 'git push';
-      const simpleResult = await executeGitCommand(simpleCommand, repoPath);
-      return { success: true, result: simpleResult };
-    } catch (simpleError) {
-      // Determine the specific error reason
-      if (simpleError.message.toLowerCase().includes('upstream')) {
-        return { success: false, error: 'Branch has no upstream. Set upstream first.' };
-      } else if (simpleError.message.toLowerCase().includes('denied')) {
-        return { success: false, error: 'Push denied. Check your authentication.' };
-      } else if (simpleError.message.toLowerCase().includes('rejected')) {
-        return { success: false, error: 'Push rejected. Pull changes first.' };
+      const status = await executeGitCommand('git status --porcelain', repoPath);
+      if (status && status.trim() !== '') {
+        return { success: false, error: 'You have uncommitted changes. Please commit them before pushing.' };
       }
-      return { success: false, error: simpleError.message };
+    } catch (statusError) {
+      console.warn('Could not check git status:', statusError.message);
     }
+
+    // Check if the error is about upstream branch
+    if (error.message.toLowerCase().includes('upstream') || error.message.toLowerCase().includes('set-upstream')) {
+      try {
+        // Try to set upstream and push
+        const setCommand = `git push --set-upstream origin ${branch}`;
+        const setResult = await executeGitCommand(setCommand, repoPath);
+        return { success: true, result: setResult };
+      } catch (setUpstreamError) {
+        return { success: false, error: 'Branch has no upstream. Set upstream first or commit changes before pushing.' };
+      }
+    }
+
+    // Check if the error is about rejected push (need to pull first)
+    if (error.message.toLowerCase().includes('rejected') || error.message.toLowerCase().includes('non-fast-forward')) {
+      return { success: false, error: 'Push rejected. Pull changes first.' };
+    }
+
+    // Check if the error is about authentication
+    if (error.message.toLowerCase().includes('denied') || error.message.toLowerCase().includes('authentication')) {
+      return { success: false, error: 'Push denied. Check your authentication.' };
+    }
+
+    // For other errors, return the original message
+    return { success: false, error: error.message };
   }
 });
 
