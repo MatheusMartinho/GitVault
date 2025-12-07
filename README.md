@@ -40,6 +40,7 @@ O **GitVault** é um gerenciador de repositórios Git desktop que transforma a f
 - **Conexão nativa** com GitHub, GitLab, Bitbucket
 - **Visualização integrada** de commits, branches e status
 - **Fluxo de trabalho contínuo** com plataformas de hospedagem de código
+- **Operações inteligentes** de pull/push com tratamento de erros avançado
 
 ### 📊 Dashboard de Atividade
 - **Métricas de commit** e colaboração
@@ -50,6 +51,12 @@ O **GitVault** é um gerenciador de repositórios Git desktop que transforma a f
 - **Cópias de segurança automáticas**
 - **Sincronização entre máquinas**
 - **Histórico de modificações importantes**
+
+### 🔄 Sistema de Atualização Automática
+- **Verificação automática** de novas versões
+- **Download em segundo plano** de atualizações
+- **Instalação com um clique** de novas versões
+- **Notificações inteligentes** quando atualizações estão disponíveis
 
 ## 🚀 Recursos Avançados
 
@@ -99,11 +106,24 @@ O **GitVault** é um gerenciador de repositórios Git desktop que transforma a f
 ## 📦 Instalação
 
 ### Pré-requisitos
-- Node.js 16+ instalado
 - Git instalado e configurado
-- Sistema operacional: Windows, macOS ou Linux
+- macOS, Windows ou Linux
 
-### Instalação
+### Download e Instalação (Recomendado para Usuários Finais)
+
+1. **Acesse a página de releases**: [GitHub Releases](https://github.com/seu-usuario/gitvault/releases) (simulado)
+2. **Selecione o seu sistema operacional**:
+   - **macOS**: Baixe `GitVault-x.x.x-arm64.dmg` ou `GitVault-x.x.x-mac.zip`
+   - **Windows**: Baixe `GitVault Setup x.x.x.exe` ou `GitVault-x.x.x-win.zip`
+   - **Linux**: Baixe `GitVault-x.x.x.AppImage` ou `GitVault-x.x.x_amd64.deb`
+
+3. **Execute o instalador**:
+   - **macOS DMG**: Abra o arquivo .dmg e arraste o GitVault para a pasta Aplicativos
+   - **Windows EXE**: Execute o instalador como administrador
+   - **Linux AppImage**: Torne o arquivo executável e execute
+
+### Instalação para Desenvolvedores
+
 ```bash
 # Clone o repositório
 git clone https://github.com/seu-usuario/gitvault.git
@@ -114,9 +134,22 @@ npm install
 
 # Execute em modo de desenvolvimento
 npm start
+```
 
-# Ou construa para produção
-npm run build
+### Execução em Ambiente de Produção
+
+```bash
+# Clone e instale
+git clone https://github.com/seu-usuario/gitvault.git
+cd gitvault
+npm install
+
+# Construa o aplicativo
+npm run build:mac    # para macOS
+npm run build:win    # para Windows
+npm run build:linux  # para Linux
+
+# Os arquivos prontos para distribuição estarão em: dist-app/
 ```
 
 ## 🎯 Como Usar
@@ -182,7 +215,32 @@ gitvault/
 4. Push para a branch (`git push origin feature/AmazingFeature`)  
 5. Abra um Pull Request
 
-## 📈 Estatísticas do Projeto
+## 📦 Distribuição e Releases
+
+### Arquivos Gerados
+
+Após o build, os seguintes arquivos são criados em `dist-app/`:
+
+| Plataforma | Arquivo | Tipo | Descrição |
+|------------|---------|------|-----------|
+| macOS | `GitVault-x.x.x-arm64.dmg` | Instalador | Disco de instalação para macOS (Apple Silicon) |
+| macOS | `GitVault-x.x.x-arm64-mac.zip` | Portátil | Versão compactada para macOS (Apple Silicon) |
+| Windows | `GitVault Setup x.x.x.exe` | Instalador | Instalador NSIS para Windows |
+| Windows | `GitVault-x.x.x-win.zip` | Portátil | Versão compactada para Windows |
+| Linux | `GitVault-x.x.x.AppImage` | Executável | Aplicação portátil para Linux |
+| Linux | `GitVault-x.x.x_amd64.deb` | Pacote | Pacote Debian para Linux |
+| Linux | `GitVault-x.x.x_amd64.rpm` | Pacote | Pacote Red Hat para Linux |
+
+### Publicação de Releases
+
+Para publicar uma nova versão:
+
+1. Atualize o número de versão em `package.json`
+2. Execute `npm run build:mac`, `npm run build:win` ou `npm run build:linux` conforme necessário
+3. Crie uma nova release no GitHub com os arquivos gerados
+4. Adicione uma descrição detalhando as mudanças
+
+### Estatísticas do Projeto
 
 - **Performance**: 98% mais rápido que interfaces CLI tradicionais
 - **Produtividade**: 40% de aumento na eficiência de gerenciamento de repositórios

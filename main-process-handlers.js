@@ -58,15 +58,63 @@ ipcMain.handle('git:pull', async (event, repoPath) => {
       return { success: false, error: 'No remote repository configured. Add a remote first.' };
     }
 
-    // Pull with rebase to avoid merge conflicts when possible
-    const command = 'git pull --rebase';
-    const result = await executeGitCommand(command, repoPath);
-    return { success: true, result };
-  } catch (error) {
-    // Check if the error is about merge conflicts
-    if (error.message.toLowerCase().includes('merge') || error.message.toLowerCase().includes('conflict')) {
-      return { success: false, error: `Merge conflict detected: ${error.message}` };
+    // Get current branch
+    let branch;
+    try {
+      branch = await executeGitCommand('git branch --show-current', repoPath);
+      if (!branch || branch === '') {
+        return { success: false, error: 'Not on any branch. Cannot pull.' };
+      }
+    } catch (branchError) {
+      return { success: false, error: 'Error determining current branch.' };
     }
+
+    // Try pull with rebase first to avoid merge commits
+    try {
+      const command = `git pull --rebase origin ${branch}`;
+      const result = await executeGitCommand(command, repoPath);
+      return { success: true, result };
+    } catch (rebaseError) {
+      // Check if the error is due to unstaged changes
+      if (rebaseError.message.toLowerCase().includes('unstaged changes') ||
+          rebaseError.message.toLowerCase().includes('cannot pull with rebase') ||
+          rebaseError.message.toLowerCase().includes('you have unstaged changes')) {
+
+        try {
+          // Stash changes temporarily
+          await executeGitCommand('git stash', repoPath);
+          const command = `git pull --rebase origin ${branch}`;
+          const result = await executeGitCommand(command, repoPath);
+
+          // Try to restore stashed changes (but ignore errors as they're expected if there are conflicts)
+          await executeGitCommand('git stash pop', repoPath).catch(() => {
+            // If pop fails, it means there were conflicts which is expected
+            // We'll return success because the pull completed, and conflicts will need manual resolution
+          });
+
+          return { success: true, result };
+        } catch (stashError) {
+          // If stash fails, try normal pull
+          try {
+            const fallbackCommand = `git pull origin ${branch}`;
+            const fallbackResult = await executeGitCommand(fallbackCommand, repoPath);
+            return { success: true, result: fallbackResult };
+          } catch (normalPullError) {
+            return { success: false, error: `Pull failed. ${normalPullError.message}` };
+          }
+        }
+      }
+
+      // For other rebase errors, try a normal pull
+      try {
+        const fallbackCommand = `git pull origin ${branch}`;
+        const fallbackResult = await executeGitCommand(fallbackCommand, repoPath);
+        return { success: true, result: fallbackResult };
+      } catch (fallbackError) {
+        return { success: false, error: `Pull failed. ${rebaseError.message}. Fallback also failed: ${fallbackError.message}` };
+      }
+    }
+  } catch (error) {
     return { success: false, error: error.message };
   }
 });

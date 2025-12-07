@@ -10,11 +10,127 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState(null);
   const [commitMessage, setCommitMessage] = useState('');
+  const [updateStatus, setUpdateStatus] = useState({
+    available: false,
+    downloading: false,
+    downloaded: false,
+    progress: 0,
+    version: null
+  });
 
   // Load repositories on component mount
   useEffect(() => {
     loadRepositories();
   }, []);
+
+  // Setup update listeners
+  useEffect(() => {
+    // Listen for update checking
+    window.electronAPI.onUpdateChecking(() => {
+      setNotification('Checking', 'Checking for updates...');
+    });
+
+    // Listen for update available
+    window.electronAPI.onUpdateAvailable((event, info) => {
+      setUpdateStatus(prev => ({
+        ...prev,
+        available: true,
+        version: info.version
+      }));
+      showNotification('Update Available', `Version ${info.version} is available for download`);
+    });
+
+    // Listen for update not available
+    window.electronAPI.onUpdateNotAvailable(() => {
+      setUpdateStatus(prev => ({
+        ...prev,
+        available: false
+      }));
+      // Only show notification if user manually checked for updates
+    });
+
+    // Listen for download progress
+    window.electronAPI.onUpdateDownloadProgress((event, progress) => {
+      setUpdateStatus(prev => ({
+        ...prev,
+        downloading: true,
+        progress: Math.round(progress.percent)
+      }));
+    });
+
+    // Listen for update downloaded
+    window.electronAPI.onUpdateDownloaded(() => {
+      setUpdateStatus(prev => ({
+        ...prev,
+        downloading: false,
+        downloaded: true
+      }));
+      showNotification('Update Ready', 'Update downloaded. Restart the app to install.');
+    });
+
+    // Listen for update errors
+    window.electronAPI.onUpdateError((event, error) => {
+      setUpdateStatus(prev => ({
+        ...prev,
+        downloading: false
+      }));
+      showNotification('Update Error', `Failed to update: ${error}`);
+    });
+
+    return () => {
+      // Cleanup listeners if needed
+    };
+  }, []);
+
+  // Function to check for updates
+  const checkForUpdates = async () => {
+    try {
+      const result = await window.electronAPI.checkForUpdates();
+      if (result.success) {
+        showNotification('Update', 'Checking for updates...');
+      } else {
+        showNotification('Error', `Failed to check for updates: ${result.error}`);
+      }
+    } catch (error) {
+      showNotification('Error', `Failed to check for updates: ${error.message}`);
+    }
+  };
+
+  // Function to download update
+  const downloadUpdate = async () => {
+    try {
+      setUpdateStatus(prev => ({
+        ...prev,
+        downloading: true
+      }));
+
+      const result = await window.electronAPI.downloadUpdate();
+      if (result.success) {
+        showNotification('Downloading', 'Downloading update...');
+      } else {
+        showNotification('Error', `Failed to download update: ${result.error}`);
+        setUpdateStatus(prev => ({
+          ...prev,
+          downloading: false
+        }));
+      }
+    } catch (error) {
+      showNotification('Error', `Failed to download update: ${error.message}`);
+      setUpdateStatus(prev => ({
+        ...prev,
+        downloading: false
+      }));
+    }
+  };
+
+  // Function to install update
+  const installUpdate = async () => {
+    try {
+      await window.electronAPI.quitAndInstall();
+    } catch (error) {
+      showNotification('Error', `Failed to install update: ${error.message}`);
+    }
+  };
 
   // Load repositories from the main process
   const loadRepositories = async () => {
@@ -130,6 +246,30 @@ function App() {
         <h1>GitVault</h1>
         <div className="header-actions">
           <button onClick={() => addRepository()}>Add Repository</button>
+          {updateStatus.available && updateStatus.version && !updateStatus.downloaded && (
+            <button
+              className={`update-btn ${updateStatus.downloading ? 'downloading' : ''}`}
+              onClick={updateStatus.downloading ? null : downloadUpdate}
+              disabled={updateStatus.downloading}
+            >
+              {updateStatus.downloading ? `Downloading... ${updateStatus.progress}%` : `Update to v${updateStatus.version}!`}
+            </button>
+          )}
+          {updateStatus.downloaded && (
+            <button
+              className="update-btn installed"
+              onClick={installUpdate}
+            >
+              Restart to Update
+            </button>
+          )}
+          <button
+            className="check-update-btn"
+            onClick={checkForUpdates}
+            title="Check for updates"
+          >
+            ↻
+          </button>
         </div>
       </header>
 

@@ -18,5 +18,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     removeRepository: (path) => ipcRenderer.invoke('repositories:remove', path),
 
     // File system operations
-    selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory')
+    selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory'),
+
+    // Update operations
+    checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+    downloadUpdate: () => ipcRenderer.invoke('download-update'),
+    quitAndInstall: () => ipcRenderer.invoke('quit-and-install'),
+
+    // Update event listeners
+    onUpdateChecking: (callback) => ipcRenderer.on('update-checking', callback),
+    onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),
+    onUpdateNotAvailable: (callback) => ipcRenderer.on('update-not-available', callback),
+    onUpdateDownloadProgress: (callback) => ipcRenderer.on('update-download-progress', callback),
+    onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', callback),
+    onUpdateError: (callback) => ipcRenderer.on('update-error', callback)
 });

@@ -6,6 +6,9 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
     "dev": "concurrently \"npm:start\" \"npm:watch\"",
     "watch": "webpack --watch --mode development"
   },
@@ -26,11 +29,11 @@
     "cross-env": "^7.0.3",
     "dotenv": "^16.0.0",
     "electron-squirrel-startup": "^1.0.1",
+    "electron-updater": "^6.6.2",
     "fs-extra": "^11.0.0",
     "lodash": "^4.17.21",
     "react": "^18.0.0",
-    "react-dom": "^18.0.0",
-    "react-scripts": "^5.0.0"
+    "react-dom": "^18.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.0.0",
@@ -38,12 +41,85 @@
     "@babel/preset-react": "^7.0.0",
     "babel-loader": "^8.0.0",
     "concurrently": "^7.0.0",
+    "css-loader": "^7.1.2",
     "electron": "^29.0.0",
     "electron-builder": "^23.0.0",
     "html-webpack-plugin": "^5.0.0",
+    "style-loader": "^4.0.0",
     "webpack": "^5.0.0",
     "webpack-cli": "^4.0.0",
     "webpack-dev-server": "^4.0.0",
     "webpack-node-externals": "^2.0.0"
+  },
+  "build": {
+    "appId": "com.lingma.gitvault",
+    "productName": "GitVault",
+    "directories": {
+      "output": "dist-app"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "main-process-handlers.js",
+      "dist/**/*",
+      "package.json",
+      "public/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/",
+        "to": "dist/"
+      }
+    ],
+    "extraMetadata": {
+      "main": "main.js"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "seu-usuario",
+      "repo": "gitvault"
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 410,
+          "y": 150,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 130,
+          "y": 150,
+          "type": "file"
+        }
+      ]
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "icon": "public/icon.ico"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm",
+        "zip"
+      ],
+      "category": "Development"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
