@@ -48,7 +48,8 @@ function executeGitCommand(command, cwd, timeout = 30000) {
     const proc = spawn(gitCommand, args, {
       cwd,
       shell: true,
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } // Prevent interactive prompts
     });
 
     // Timeout handler
@@ -74,6 +75,8 @@ function executeGitCommand(command, cwd, timeout = 30000) {
       }
 
       if (code !== 0) {
+        // Ignore "everything up-to-date" or similar non-fatal "errors" if they appear in stderr but code is 0 (rare in git, usually code is 0)
+        // If code is non-zero, it's an error.
         reject(new Error(stderr || `Git exited with code ${code}`));
         return;
       }
@@ -91,28 +94,42 @@ function executeGitCommand(command, cwd, timeout = 30000) {
 // Pull changes - Simple and Fast
 ipcMain.handle('git:pull', async (event, repoPath) => {
   try {
-    const result = await executeGitCommand('git pull', repoPath, 30000);
+    const result = await executeGitCommand('git pull', repoPath, 60000); // Increased timeout for network ops
     return { success: true, result: result || 'Pull completed' };
   } catch (error) {
     return { success: false, error: error.message };
   }
 });
 
-// Push changes - Simple and Fast
+// Push changes - Simple, Fast & Robust
 ipcMain.handle('git:push', async (event, repoPath) => {
   try {
-    const result = await executeGitCommand('git push', repoPath, 30000);
+    // Try standard push first
+    const result = await executeGitCommand('git push', repoPath, 60000); // Increased timeout for network ops
     return { success: true, result: result || 'Push completed' };
   } catch (error) {
-    // Try with upstream if needed
-    if (error.message.includes('upstream') || error.message.includes('set-upstream')) {
+    const err = error.message.toLowerCase();
+
+    // Handle upstream issue automatically
+    if (err.includes('upstream') || err.includes('set-upstream') || err.includes('no upstream')) {
       try {
-        const result = await executeGitCommand('git push -u origin HEAD', repoPath, 30000);
-        return { success: true, result: result || 'Push completed' };
+        const result = await executeGitCommand('git push -u origin HEAD', repoPath, 60000);
+        return { success: true, result: result || 'Push completed (upstream set)' };
       } catch (e) {
         return { success: false, error: e.message };
       }
     }
+
+    // Handle rejected push (need pull)
+    if (err.includes('rejected') || err.includes('fetch first') || err.includes('non-fast-forward')) {
+      return { success: false, error: 'Push rejected. Remote has changes you don\'t have. Pull first.' };
+    }
+
+    // Handle auth failure
+    if (err.includes('auth') || err.includes('password') || err.includes('denied')) {
+      return { success: false, error: 'Authentication failed. Check your credentials.' };
+    }
+
     return { success: false, error: error.message };
   }
 });
