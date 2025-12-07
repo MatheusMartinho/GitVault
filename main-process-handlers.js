@@ -59,62 +59,46 @@ function executeGitCommand(command, cwd, timeout = 30000) {
   });
 }
 
-// Pull changes - Optimized version with extended timeout
+// Pull changes - Professional & Fast Implementation
 ipcMain.handle('git:pull', async (event, repoPath) => {
   try {
-    // Parallelize remote and branch checks
-    const [remoteUrl, branch] = await Promise.all([
-      executeGitCommand('git remote get-url origin', repoPath, 5000).catch(() => null),
-      executeGitCommand('git branch --show-current', repoPath, 5000).catch(() => null)
-    ]);
+    // Get current branch fast
+    const branch = await executeGitCommand('git branch --show-current', repoPath, 3000);
 
-    // Validate remote
-    if (!remoteUrl) {
-      return { success: false, error: 'No remote repository configured. Add a remote first.' };
+    if (!branch || !branch.trim()) {
+      return { success: false, error: 'Not on any branch. Checkout a branch first.' };
     }
 
-    // Validate branch
-    if (!branch || branch.trim() === '') {
-      return { success: false, error: 'Not on any branch. Cannot pull.' };
-    }
+    // Direct pull - Git handles everything
+    const result = await executeGitCommand(
+      `git pull origin ${branch.trim()}`,
+      repoPath,
+      90000 // 90s is enough for most repos
+    );
 
-    const currentBranch = branch.trim();
+    return { success: true, result };
 
-    // Try pull with rebase for cleaner history (5 minutes timeout for large repos)
-    try {
-      const result = await executeGitCommand(`git pull --rebase origin ${currentBranch}`, repoPath, 300000);
-      return { success: true, result };
-    } catch (rebaseError) {
-      const errorMsg = rebaseError.message.toLowerCase();
-
-      // Handle unstaged changes
-      if (errorMsg.includes('unstaged') || errorMsg.includes('uncommitted')) {
-        try {
-          await executeGitCommand('git stash', repoPath, 10000);
-          const result = await executeGitCommand(`git pull --rebase origin ${currentBranch}`, repoPath, 300000);
-          await executeGitCommand('git stash pop', repoPath, 10000).catch(() => { });
-          return { success: true, result };
-        } catch (stashError) {
-          // Fallback to normal pull
-          try {
-            const fallbackResult = await executeGitCommand(`git pull origin ${currentBranch}`, repoPath, 300000);
-            return { success: true, result: fallbackResult };
-          } catch (normalPullError) {
-            return { success: false, error: normalPullError.message };
-          }
-        }
-      }
-
-      // Try normal pull as fallback
-      try {
-        const fallbackResult = await executeGitCommand(`git pull origin ${currentBranch}`, repoPath, 300000);
-        return { success: true, result: fallbackResult };
-      } catch (fallbackError) {
-        return { success: false, error: fallbackError.message };
-      }
-    }
   } catch (error) {
-    return { success: false, error: error.message };
+    const errorMsg = error.message;
+
+    // Smart error handling
+    if (errorMsg.includes('no remote') || errorMsg.includes('does not appear')) {
+      return { success: false, error: 'No remote configured. Add remote first.' };
+    }
+
+    if (errorMsg.includes('uncommitted changes') || errorMsg.includes('would be overwritten')) {
+      return { success: false, error: 'Uncommitted changes would be overwritten. Commit or stash first.' };
+    }
+
+    if (errorMsg.includes('Could not resolve host') || errorMsg.includes('unable to access')) {
+      return { success: false, error: 'Network error. Check connection.' };
+    }
+
+    if (errorMsg.includes('CONFLICT')) {
+      return { success: false, error: 'Merge conflicts detected. Resolve manually.' };
+    }
+
+    return { success: false, error: errorMsg };
   }
 });
 
@@ -274,25 +258,37 @@ ipcMain.handle('git:add', async (event, repoPath) => {
   }
 });
 
-// Commit changes - Optimized version
+// Commit changes - Professional & Fast Implementation
 ipcMain.handle('git:commit', async (event, repoPath, message) => {
   try {
-    // Escape message properly and execute with timeout
-    const escapedMessage = message.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
-    const command = `git commit -m "${escapedMessage}"`;
-    const result = await executeGitCommand(command, repoPath, 10000);
-    return { success: true, result };
-  } catch (error) {
-    const errorMsg = error.message.toLowerCase();
+    // Proper escaping for shell safety
+    const escapedMessage = message
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/`/g, '\\`')
+      .replace(/\$/g, '\\$');
 
-    // Provide better error messages
-    if (errorMsg.includes('nothing to commit')) {
-      return { success: false, error: 'No changes staged for commit. Use git add first.' };
+    // Direct commit - fast execution
+    const result = await executeGitCommand(
+      `git commit -m "${escapedMessage}"`,
+      repoPath,
+      10000 // 10s is plenty for commits
+    );
+
+    return { success: true, result };
+
+  } catch (error) {
+    const errorMsg = error.message;
+
+    if (errorMsg.includes('nothing to commit') || errorMsg.includes('no changes added')) {
+      return { success: false, error: 'No staged changes. Stage files first.' };
     }
-    if (errorMsg.includes('timed out')) {
-      return { success: false, error: 'Commit operation timed out.' };
+
+    if (errorMsg.includes('Please tell me who you are')) {
+      return { success: false, error: 'Git user not configured. Set user.name and user.email.' };
     }
-    return { success: false, error: error.message };
+
+    return { success: false, error: errorMsg };
   }
 });
 
