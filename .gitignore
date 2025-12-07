@@ -1,1 +1,7 @@
 node_modules
+dist/
+dist-app/
+*.dmg
+*.zip
+*.exe
+*.AppImage
