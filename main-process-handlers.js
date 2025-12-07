@@ -63,6 +63,10 @@ ipcMain.handle('git:pull', async (event, repoPath) => {
     const result = await executeGitCommand(command, repoPath);
     return { success: true, result };
   } catch (error) {
+    // Check if the error is about merge conflicts
+    if (error.message.toLowerCase().includes('merge') || error.message.toLowerCase().includes('conflict')) {
+      return { success: false, error: `Merge conflict detected: ${error.message}` };
+    }
     return { success: false, error: error.message };
   }
 });
@@ -78,22 +82,37 @@ ipcMain.handle('git:push', async (event, repoPath) => {
       return { success: false, error: 'No remote repository configured. Add a remote first.' };
     }
 
-    // Check if there are commits to push
-    const hasCommits = await executeGitCommand('git log origin/main..HEAD', repoPath).catch(() => '');
+    // Check the current branch
+    let branch;
+    try {
+      branch = await executeGitCommand('git branch --show-current', repoPath);
+      if (!branch) {
+        branch = 'HEAD'; // fallback for detached HEAD state
+      }
+    } catch (branchError) {
+      branch = 'HEAD'; // fallback
+    }
 
-    // If no commits to push, try the default push with set-upstream
-    const command = 'git push --set-upstream origin HEAD';
+    // Try to push with set-upstream if needed
+    const command = `git push --set-upstream origin ${branch}`;
     const result = await executeGitCommand(command, repoPath);
     return { success: true, result };
   } catch (error) {
-    // Try a simpler push command for different repository configurations
+    // If the above fails, try a simple push
     try {
       const simpleCommand = 'git push';
       const simpleResult = await executeGitCommand(simpleCommand, repoPath);
       return { success: true, result: simpleResult };
     } catch (simpleError) {
-      // If all else fails, return the original error
-      return { success: false, error: error.message };
+      // Determine the specific error reason
+      if (simpleError.message.toLowerCase().includes('upstream')) {
+        return { success: false, error: 'Branch has no upstream. Set upstream first.' };
+      } else if (simpleError.message.toLowerCase().includes('denied')) {
+        return { success: false, error: 'Push denied. Check your authentication.' };
+      } else if (simpleError.message.toLowerCase().includes('rejected')) {
+        return { success: false, error: 'Push rejected. Pull changes first.' };
+      }
+      return { success: false, error: simpleError.message };
     }
   }
 });

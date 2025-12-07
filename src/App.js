@@ -176,8 +176,38 @@ function App() {
               <div className="repo-header">
                 <h2>{activeRepo.name}</h2>
                 <div className="repo-actions">
-                  <button onClick={() => window.electronAPI.gitPull(activeRepo.path)}>Pull</button>
-                  <button onClick={() => window.electronAPI.gitPush(activeRepo.path)}>Push</button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const result = await window.electronAPI.gitPull(activeRepo.path);
+                        if (result.success) {
+                          showNotification('Success', 'Repository pulled successfully');
+                        } else {
+                          showNotification('Error', `Pull failed: ${result.error}`);
+                        }
+                      } catch (error) {
+                        showNotification('Error', `Pull failed: ${error.message}`);
+                      }
+                    }}
+                  >
+                    Pull
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const result = await window.electronAPI.gitPush(activeRepo.path);
+                        if (result.success) {
+                          showNotification('Success', 'Repository pushed successfully');
+                        } else {
+                          showNotification('Error', `Push failed: ${result.error}`);
+                        }
+                      } catch (error) {
+                        showNotification('Error', `Push failed: ${error.message}`);
+                      }
+                    }}
+                  >
+                    Push
+                  </button>
                 </div>
               </div>
 
