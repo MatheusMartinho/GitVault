@@ -1,5 +1,5 @@
 const { ipcMain, dialog } = require('electron');
-const { spawn } = require('child_process');
+const { execFile } = require('child_process');
 const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
@@ -35,109 +35,68 @@ async function saveRepositories(repositories) {
   }
 }
 
-// Execute Git command using spawn (memory efficient, no buffering)
-function executeGitCommand(command, cwd, timeout = 30000) {
+// Execute Git command using execFile (simple, reliable, no shell issues)
+function runGit(args, cwd, timeout = 60000) {
   return new Promise((resolve, reject) => {
-    // Parse command properly - split by spaces but handle quoted strings
-    const parts = command.split(' ');
-    const gitCommand = parts[0]; // Should be 'git'
-    const args = parts.slice(1);
-
-    let stdout = '';
-    let stderr = '';
-    let killed = false;
-
-    const proc = spawn(gitCommand, args, {
+    const options = {
       cwd,
-      shell: false, // No shell - direct execution
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } // Prevent interactive prompts
-    });
+      timeout,
+      maxBuffer: 1024 * 1024, // 1MB
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
+    };
 
-    // Timeout handler
-    const timer = setTimeout(() => {
-      killed = true;
-      proc.kill('SIGTERM');
-    }, timeout);
-
-    proc.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    proc.on('close', (code) => {
-      clearTimeout(timer);
-
-      if (killed) {
-        reject(new Error('Command timed out'));
+    execFile('git', args, options, (error, stdout, stderr) => {
+      if (error) {
+        // Check if it's a timeout
+        if (error.killed) {
+          reject(new Error('Command timed out'));
+        } else {
+          reject(new Error(stderr || error.message));
+        }
         return;
       }
-
-      if (code !== 0) {
-        reject(new Error(stderr || `Git exited with code ${code}`));
-        return;
-      }
-
       resolve(stdout.trim());
-    });
-
-    proc.on('error', (err) => {
-      clearTimeout(timer);
-      reject(err);
     });
   });
 }
 
-// Pull changes - Simple and Fast
+// Pull changes
 ipcMain.handle('git:pull', async (event, repoPath) => {
   try {
-    const result = await executeGitCommand('git pull', repoPath, 60000); // Increased timeout for network ops
+    const result = await runGit(['pull'], repoPath);
     return { success: true, result: result || 'Pull completed' };
   } catch (error) {
     return { success: false, error: error.message };
   }
 });
 
-// Push changes - Simple, Fast & Robust
+// Push changes - SIMPLE AND DIRECT
 ipcMain.handle('git:push', async (event, repoPath) => {
   try {
-    // Try standard push first
-    const result = await executeGitCommand('git push', repoPath, 60000); // Increased timeout for network ops
+    // Direct push
+    const result = await runGit(['push'], repoPath);
     return { success: true, result: result || 'Push completed' };
   } catch (error) {
     const err = error.message.toLowerCase();
 
-    // Handle upstream issue automatically
-    if (err.includes('upstream') || err.includes('set-upstream') || err.includes('no upstream')) {
+    // Auto-set upstream if needed
+    if (err.includes('upstream') || err.includes('set-upstream')) {
       try {
-        const result = await executeGitCommand('git push -u origin HEAD', repoPath, 60000);
-        return { success: true, result: result || 'Push completed (upstream set)' };
+        const result = await runGit(['push', '-u', 'origin', 'HEAD'], repoPath);
+        return { success: true, result: result || 'Push completed' };
       } catch (e) {
         return { success: false, error: e.message };
       }
-    }
-
-    // Handle rejected push (need pull)
-    if (err.includes('rejected') || err.includes('fetch first') || err.includes('non-fast-forward')) {
-      return { success: false, error: 'Push rejected. Remote has changes you don\'t have. Pull first.' };
-    }
-
-    // Handle auth failure
-    if (err.includes('auth') || err.includes('password') || err.includes('denied')) {
-      return { success: false, error: 'Authentication failed. Check your credentials.' };
     }
 
     return { success: false, error: error.message };
   }
 });
 
-// Get repository status - Optimized
+// Get repository status
 ipcMain.handle('git:status', async (event, repoPath) => {
   try {
-    const statusOutput = await executeGitCommand('git status --porcelain', repoPath, 5000);
+    const statusOutput = await runGit(['status', '--porcelain'], repoPath, 5000);
 
     if (!statusOutput) {
       return [];
@@ -162,11 +121,11 @@ ipcMain.handle('git:status', async (event, repoPath) => {
   }
 });
 
-// Get commit log - Optimized
+// Get commit log
 ipcMain.handle('git:log', async (event, repoPath) => {
   try {
-    const logOutput = await executeGitCommand(
-      'git log --pretty=format:"%H|%an|%ad|%s" --date=short -20',
+    const logOutput = await runGit(
+      ['log', '--pretty=format:%H|%an|%ad|%s', '--date=short', '-20'],
       repoPath,
       10000
     );
@@ -186,10 +145,10 @@ ipcMain.handle('git:log', async (event, repoPath) => {
   }
 });
 
-// Get branches - Optimized
+// Get branches
 ipcMain.handle('git:branches', async (event, repoPath) => {
   try {
-    const branchesOutput = await executeGitCommand('git branch -a', repoPath, 5000);
+    const branchesOutput = await runGit(['branch', '-a'], repoPath, 5000);
 
     if (!branchesOutput) {
       return [];
@@ -206,57 +165,24 @@ ipcMain.handle('git:branches', async (event, repoPath) => {
   }
 });
 
-// Add files to staging (git add) - Optimized
+// Add files to staging
 ipcMain.handle('git:add', async (event, repoPath) => {
   try {
-    await executeGitCommand('git add .', repoPath, 10000);
+    await runGit(['add', '.'], repoPath, 10000);
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
   }
 });
 
-// Commit changes - Simple and Direct
+// Commit changes
 ipcMain.handle('git:commit', async (event, repoPath, message) => {
-  return new Promise((resolve, reject) => {
-    const proc = spawn('git', ['commit', '-m', message], {
-      cwd: repoPath,
-      shell: false,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    const timer = setTimeout(() => {
-      proc.kill('SIGTERM');
-      resolve({ success: false, error: 'Commit timed out' });
-    }, 10000);
-
-    proc.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    proc.on('close', (code) => {
-      clearTimeout(timer);
-
-      if (code === 0) {
-        resolve({ success: true, result: stdout.trim() || 'Commit completed' });
-      } else {
-        resolve({ success: false, error: stderr || `Git exited with code ${code}` });
-      }
-    });
-
-    proc.on('error', (err) => {
-      clearTimeout(timer);
-      resolve({ success: false, error: err.message });
-    });
-  });
+  try {
+    const result = await runGit(['commit', '-m', message], repoPath, 10000);
+    return { success: true, result: result || 'Commit completed' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 });
 
 // Get repositories
