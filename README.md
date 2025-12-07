@@ -14,8 +14,7 @@
 
 </div>
 
-## 🌟 O Que É o GitVault?a
-
+## 🌟 O Que É o GitVault?
 O **GitVault** é um gerenciador de repositórios Git desktop que transforma a forma como você trabalha com projetos de código-fonte. Inspirado nos cofres de segurança dos bancos, o GitVault oferece uma interface visual e intuitiva para gerenciar múltiplos repositórios Git locais e remotos.
 
 > **"Transformando a complexidade do Git em simplicidade visual"**
