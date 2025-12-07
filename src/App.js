@@ -1,0 +1,259 @@
+import React, { useState, useEffect } from 'react';
+import './App.css';
+
+function App() {
+  const [repositories, setRepositories] = useState([]);
+  const [activeRepo, setActiveRepo] = useState(null);
+  const [branches, setBranches] = useState([]);
+  const [commits, setCommits] = useState([]);
+  const [changes, setChanges] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [notification, setNotification] = useState(null);
+  const [commitMessage, setCommitMessage] = useState('');
+
+  // Load repositories on component mount
+  useEffect(() => {
+    loadRepositories();
+  }, []);
+
+  // Load repositories from the main process
+  const loadRepositories = async () => {
+    try {
+      const repos = await window.electronAPI.getRepositories();
+      setRepositories(repos);
+    } catch (error) {
+      showNotification('Error', 'Failed to load repositories');
+    }
+  };
+
+  // Add a new repository
+  const addRepository = async () => {
+    try {
+      const path = await window.electronAPI.selectDirectory();
+      if (path) {
+        const result = await window.electronAPI.addRepository(path);
+        if (result.success) {
+          showNotification('Success', 'Repository added successfully');
+          loadRepositories();
+        } else {
+          showNotification('Error', result.error || 'Failed to add repository');
+        }
+      }
+    } catch (error) {
+      showNotification('Error', 'Failed to add repository');
+    }
+  };
+
+  // Remove a repository
+  const removeRepository = async (path) => {
+    try {
+      const result = await window.electronAPI.removeRepository(path);
+      if (result.success) {
+        showNotification('Success', 'Repository removed successfully');
+        loadRepositories();
+        if (activeRepo && activeRepo.path === path) {
+          setActiveRepo(null);
+        }
+      } else {
+        showNotification('Error', result.error || 'Failed to remove repository');
+      }
+    } catch (error) {
+      showNotification('Error', 'Failed to remove repository');
+    }
+  };
+
+  // Select a repository
+  const selectRepository = async (repo) => {
+    setLoading(true);
+    try {
+      setActiveRepo(repo);
+      
+      // Load branches
+      const branchData = await window.electronAPI.gitBranches(repo.path);
+      setBranches(branchData);
+      
+      // Load commits
+      const commitData = await window.electronAPI.gitLog(repo.path);
+      setCommits(commitData);
+      
+      // Load changes
+      const statusData = await window.electronAPI.gitStatus(repo.path);
+      setChanges(statusData);
+    } catch (error) {
+      showNotification('Error', 'Failed to load repository data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Show notification
+  const showNotification = (title, message) => {
+    setNotification({ title, message });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  // Commit changes
+  const commitChanges = async () => {
+    if (!commitMessage.trim()) {
+      showNotification('Error', 'Please enter a commit message');
+      return;
+    }
+
+    if (!changes || changes.length === 0) {
+      showNotification('Error', 'No changes to commit');
+      return;
+    }
+
+    try {
+      // First stage all changes (git add .)
+      await window.electronAPI.gitAdd(activeRepo.path);
+
+      // Then commit with message
+      const result = await window.electronAPI.gitCommit(activeRepo.path, commitMessage);
+      if (result.success) {
+        showNotification('Success', 'Changes committed successfully');
+        setCommitMessage('');
+        // Reload repository data to show new commit
+        selectRepository(activeRepo);
+      } else {
+        showNotification('Error', result.error || 'Failed to commit changes');
+      }
+    } catch (error) {
+      showNotification('Error', 'Failed to commit changes');
+    }
+  };
+
+  return (
+    <div className="app">
+      {/* Header */}
+      <header className="app-header">
+        <h1>GitVault</h1>
+        <div className="header-actions">
+          <button onClick={() => addRepository()}>Add Repository</button>
+        </div>
+      </header>
+
+      {/* Notification */}
+      {notification && (
+        <div className="notification">
+          <h4>{notification.title}</h4>
+          <p>{notification.message}</p>
+        </div>
+      )}
+
+      <div className="app-content">
+        {/* Sidebar with repositories */}
+        <aside className="sidebar">
+          <h2>Repositories</h2>
+          <ul className="repository-list">
+            {repositories.map((repo) => (
+              <li 
+                key={repo.path} 
+                className={activeRepo && activeRepo.path === repo.path ? 'active' : ''}
+                onClick={() => selectRepository(repo)}
+              >
+                <span className="repo-name">{repo.name}</span>
+                <button 
+                  className="remove-btn" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeRepository(repo.path);
+                  }}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        </aside>
+
+        {/* Main content area */}
+        <main className="main-content">
+          {loading ? (
+            <div className="loading">Loading...</div>
+          ) : activeRepo ? (
+            <div className="repo-details">
+              <div className="repo-header">
+                <h2>{activeRepo.name}</h2>
+                <div className="repo-actions">
+                  <button onClick={() => window.electronAPI.gitPull(activeRepo.path)}>Pull</button>
+                  <button onClick={() => window.electronAPI.gitPush(activeRepo.path)}>Push</button>
+                </div>
+              </div>
+
+              <div className="repo-content">
+                {/* Branch selector */}
+                <section className="branches-section">
+                  <h3>Branches</h3>
+                  <select>
+                    {branches.map((branch) => (
+                      <option key={branch} value={branch}>{branch}</option>
+                    ))}
+                  </select>
+                </section>
+
+                {/* Changes section with commit functionality */}
+                <section className="changes-section">
+                  <div className="changes-header">
+                    <h3>Changes</h3>
+                    {changes.length > 0 && (
+                      <div className="commit-controls">
+                        <input
+                          type="text"
+                          placeholder="Commit message"
+                          value={commitMessage}
+                          onChange={(e) => setCommitMessage(e.target.value)}
+                          className="commit-message-input"
+                        />
+                        <button onClick={commitChanges} className="commit-btn">
+                          Commit
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {changes.length > 0 ? (
+                    <ul className="changes-list">
+                      {changes.map((change, index) => (
+                        <li key={index} className={`change-item ${change.status}`}>
+                          <span className="change-status">{change.status}</span>
+                          <span className="change-file">{change.file}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>No changes to commit</p>
+                  )}
+                </section>
+
+                {/* Commit history */}
+                <section className="history-section">
+                  <h3>Commit History</h3>
+                  <ul className="commit-history">
+                    {commits.map((commit) => (
+                      <li key={commit.hash} className="commit-item">
+                        <div className="commit-header">
+                          <strong>{commit.author}</strong>
+                          <span className="commit-date">{commit.date}</span>
+                        </div>
+                        <div className="commit-message">{commit.message}</div>
+                        <div className="commit-hash">{commit.hash.substring(0, 7)}</div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              </div>
+            </div>
+          ) : (
+            <div className="welcome-screen">
+              <h2>Welcome to GitVault</h2>
+              <p>Select a repository or add a new one to get started</p>
+            </div>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+export default App;

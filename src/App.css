@@ -1,0 +1,368 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  background-color: #f6f8fa;
+  color: #24292e;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* Header Styles */
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background-color: #24292e;
+  color: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.header-actions button {
+  background-color: #0366d6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.header-actions button:hover {
+  background-color: #035fc7;
+}
+
+/* Notification Styles */
+.notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background-color: #0366d6;
+  color: white;
+  padding: 16px;
+  border-radius: 6px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+}
+
+/* Content Layout */
+.app-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Sidebar Styles */
+.sidebar {
+  width: 280px;
+  background-color: #ffffff;
+  border-right: 1px solid #e1e4e8;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.sidebar h2 {
+  margin-top: 0;
+  font-size: 1.2rem;
+  color: #24292e;
+}
+
+.repository-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.repository-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.repository-list li:hover {
+  background-color: #f1f3f5;
+}
+
+.repository-list li.active {
+  background-color: #0366d6;
+  color: white;
+}
+
+.repo-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.remove-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #6a737d;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.repository-list li.active .remove-btn {
+  color: white;
+}
+
+/* Main Content Styles */
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  font-size: 1.2rem;
+}
+
+.welcome-screen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  text-align: center;
+  color: #6a737d;
+}
+
+.welcome-screen h2 {
+  margin-bottom: 8px;
+  color: #24292e;
+}
+
+/* Repository Details */
+.repo-details {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.repo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e1e4e8;
+}
+
+.repo-header h2 {
+  margin: 0;
+}
+
+.repo-actions button {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-left: 8px;
+  font-weight: 500;
+}
+
+.repo-actions button:hover {
+  background-color: #218838;
+}
+
+/* Branches Section */
+.branches-section {
+  margin-bottom: 24px;
+}
+
+.branches-section h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.branches-section select {
+  width: 100%;
+  max-width: 300px;
+  padding: 8px 12px;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  background-color: white;
+}
+
+/* Changes Section */
+.changes-section {
+  margin-bottom: 24px;
+}
+
+.changes-section h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.changes-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.change-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e1e4e8;
+}
+
+.change-item:last-child {
+  border-bottom: none;
+}
+
+.change-status {
+  width: 80px;
+  font-weight: 500;
+}
+
+.change-status.added {
+  color: #28a745;
+}
+
+.change-status.modified {
+  color: #0366d6;
+}
+
+.change-status.deleted {
+  color: #d73a49;
+}
+
+/* History Section */
+.history-section {
+  flex: 1;
+}
+
+.history-section h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.commit-history {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  background-color: white;
+}
+
+.commit-item {
+  padding: 16px;
+  border-bottom: 1px solid #e1e4e8;
+}
+
+.commit-item:last-child {
+  border-bottom: none;
+}
+
+.commit-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.commit-date {
+  color: #6a737d;
+  font-size: 0.9rem;
+}
+
+.commit-message {
+  margin-bottom: 8px;
+  color: #24292e;
+}
+
+.commit-hash {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: #6a737d;
+}
+
+/* Commit Controls */
+.changes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.commit-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.commit-message-input {
+  padding: 8px 12px;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  width: 250px;
+  font-size: 0.9rem;
+}
+
+.commit-btn {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.commit-btn:hover {
+  background-color: #218838;
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+  .app-content {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #e1e4e8;
+  }
+
+  .changes-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .commit-controls {
+    justify-content: flex-end;
+  }
+
+  .commit-message-input {
+    width: 100%;
+  }
+}
