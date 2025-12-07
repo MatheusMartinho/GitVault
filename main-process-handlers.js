@@ -38,8 +38,10 @@ async function saveRepositories(repositories) {
 // Execute Git command using spawn (memory efficient, no buffering)
 function executeGitCommand(command, cwd, timeout = 30000) {
   return new Promise((resolve, reject) => {
-    const args = command.split(' ').slice(1); // Remove 'git' from command
-    const gitCommand = command.split(' ')[0]; // Should be 'git'
+    // Parse command properly - split by spaces but handle quoted strings
+    const parts = command.split(' ');
+    const gitCommand = parts[0]; // Should be 'git'
+    const args = parts.slice(1);
 
     let stdout = '';
     let stderr = '';
@@ -47,7 +49,7 @@ function executeGitCommand(command, cwd, timeout = 30000) {
 
     const proc = spawn(gitCommand, args, {
       cwd,
-      shell: true,
+      shell: false, // No shell - direct execution
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } // Prevent interactive prompts
     });
@@ -75,8 +77,6 @@ function executeGitCommand(command, cwd, timeout = 30000) {
       }
 
       if (code !== 0) {
-        // Ignore "everything up-to-date" or similar non-fatal "errors" if they appear in stderr but code is 0 (rare in git, usually code is 0)
-        // If code is non-zero, it's an error.
         reject(new Error(stderr || `Git exited with code ${code}`));
         return;
       }
@@ -216,16 +216,47 @@ ipcMain.handle('git:add', async (event, repoPath) => {
   }
 });
 
-// Commit changes - Simple
+// Commit changes - Simple and Direct
 ipcMain.handle('git:commit', async (event, repoPath, message) => {
-  try {
-    // Basic escape for quotes
-    const safeMessage = message.replace(/"/g, '\\"');
-    const result = await executeGitCommand(`git commit -m "${safeMessage}"`, repoPath, 10000);
-    return { success: true, result: result || 'Commit completed' };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
+  return new Promise((resolve, reject) => {
+    const proc = spawn('git', ['commit', '-m', message], {
+      cwd: repoPath,
+      shell: false,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    const timer = setTimeout(() => {
+      proc.kill('SIGTERM');
+      resolve({ success: false, error: 'Commit timed out' });
+    }, 10000);
+
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+
+      if (code === 0) {
+        resolve({ success: true, result: stdout.trim() || 'Commit completed' });
+      } else {
+        resolve({ success: false, error: stderr || `Git exited with code ${code}` });
+      }
+    });
+
+    proc.on('error', (err) => {
+      clearTimeout(timer);
+      resolve({ success: false, error: err.message });
+    });
+  });
 });
 
 // Get repositories
