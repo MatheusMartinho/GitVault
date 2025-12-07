@@ -59,7 +59,7 @@ function executeGitCommand(command, cwd, timeout = 30000) {
   });
 }
 
-// Pull changes - Optimized version
+// Pull changes - Optimized version with extended timeout
 ipcMain.handle('git:pull', async (event, repoPath) => {
   try {
     // Parallelize remote and branch checks
@@ -80,9 +80,9 @@ ipcMain.handle('git:pull', async (event, repoPath) => {
 
     const currentBranch = branch.trim();
 
-    // Try pull with rebase for cleaner history (60s timeout for large repos)
+    // Try pull with rebase for cleaner history (5 minutes timeout for large repos)
     try {
-      const result = await executeGitCommand(`git pull --rebase origin ${currentBranch}`, repoPath, 60000);
+      const result = await executeGitCommand(`git pull --rebase origin ${currentBranch}`, repoPath, 300000);
       return { success: true, result };
     } catch (rebaseError) {
       const errorMsg = rebaseError.message.toLowerCase();
@@ -91,13 +91,13 @@ ipcMain.handle('git:pull', async (event, repoPath) => {
       if (errorMsg.includes('unstaged') || errorMsg.includes('uncommitted')) {
         try {
           await executeGitCommand('git stash', repoPath, 10000);
-          const result = await executeGitCommand(`git pull --rebase origin ${currentBranch}`, repoPath, 60000);
+          const result = await executeGitCommand(`git pull --rebase origin ${currentBranch}`, repoPath, 300000);
           await executeGitCommand('git stash pop', repoPath, 10000).catch(() => { });
           return { success: true, result };
         } catch (stashError) {
           // Fallback to normal pull
           try {
-            const fallbackResult = await executeGitCommand(`git pull origin ${currentBranch}`, repoPath, 60000);
+            const fallbackResult = await executeGitCommand(`git pull origin ${currentBranch}`, repoPath, 300000);
             return { success: true, result: fallbackResult };
           } catch (normalPullError) {
             return { success: false, error: normalPullError.message };
@@ -107,7 +107,7 @@ ipcMain.handle('git:pull', async (event, repoPath) => {
 
       // Try normal pull as fallback
       try {
-        const fallbackResult = await executeGitCommand(`git pull origin ${currentBranch}`, repoPath, 60000);
+        const fallbackResult = await executeGitCommand(`git pull origin ${currentBranch}`, repoPath, 300000);
         return { success: true, result: fallbackResult };
       } catch (fallbackError) {
         return { success: false, error: fallbackError.message };
@@ -118,60 +118,77 @@ ipcMain.handle('git:pull', async (event, repoPath) => {
   }
 });
 
-// Push changes - Optimized version
+// Push changes - Professional & Fast Implementation
 ipcMain.handle('git:push', async (event, repoPath) => {
   try {
-    // Parallelize remote and branch checks for better performance
-    const [remotes, branch] = await Promise.all([
-      executeGitCommand('git remote', repoPath, 5000).catch(() => ''),
-      executeGitCommand('git branch --show-current', repoPath, 5000).catch(() => '')
-    ]);
+    // Get current branch only (fast, single check)
+    const branch = await executeGitCommand('git branch --show-current', repoPath, 3000);
 
-    // Validate remote
-    if (!remotes || !remotes.includes('origin')) {
-      return { success: false, error: 'No remote repository named "origin" configured. Add a remote first.' };
+    if (!branch || !branch.trim()) {
+      return { success: false, error: 'Not on any branch. Checkout a branch first.' };
     }
 
-    // Validate branch
-    const currentBranch = branch.trim();
-    if (!currentBranch) {
-      return { success: false, error: 'Cannot push from detached HEAD state. Please checkout a branch.' };
-    }
+    // Direct push - let Git handle all validations (fast!)
+    try {
+      const result = await executeGitCommand(`git push origin ${branch.trim()}`, repoPath, 60000);
+      return { success: true, result };
+    } catch (pushError) {
+      const errorMsg = pushError.message;
 
-    // Execute push with reasonable timeout (60s for large repos)
-    const result = await executeGitCommand(`git push origin ${currentBranch}`, repoPath, 60000);
-    return { success: true, result };
-
-  } catch (error) {
-    const errorMsg = error.message.toLowerCase();
-
-    // Handle upstream branch not set
-    if (errorMsg.includes('upstream') || errorMsg.includes('set-upstream')) {
-      try {
-        const branch = await executeGitCommand('git branch --show-current', repoPath, 5000);
-        const result = await executeGitCommand(`git push --set-upstream origin ${branch.trim()}`, repoPath, 60000);
+      // Auto-setup upstream on first push (common case)
+      if (errorMsg.includes('--set-upstream') || errorMsg.includes('has no upstream')) {
+        const result = await executeGitCommand(
+          `git push --set-upstream origin ${branch.trim()}`,
+          repoPath,
+          60000
+        );
         return { success: true, result };
-      } catch (setUpstreamError) {
-        return { success: false, error: 'Failed to set upstream branch.' };
       }
+
+      // Re-throw to outer catch for standard error handling
+      throw pushError;
+    }
+  } catch (error) {
+    // Smart error messages based on Git's response
+    const errorMsg = error.message;
+
+    if (errorMsg.includes('reject') || errorMsg.includes('non-fast-forward')) {
+      return {
+        success: false,
+        error: 'Push rejected: Remote has newer commits. Pull first.'
+      };
     }
 
-    // Handle rejected push
-    if (errorMsg.includes('rejected') || errorMsg.includes('non-fast-forward')) {
-      return { success: false, error: 'Push rejected. Remote repository has newer commits. Please pull changes first.' };
+    if (errorMsg.includes('Could not resolve host') || errorMsg.includes('unable to access')) {
+      return {
+        success: false,
+        error: 'Network error: Check your internet connection.'
+      };
     }
 
-    // Handle authentication errors
-    if (errorMsg.includes('denied') || errorMsg.includes('authentication')) {
-      return { success: false, error: 'Authentication failed. Check your credentials.' };
+    if (errorMsg.includes('Authentication failed') || errorMsg.includes('denied')) {
+      return {
+        success: false,
+        error: 'Authentication failed: Check your Git credentials.'
+      };
     }
 
-    // Handle timeout
+    if (errorMsg.includes('No configured push destination') || errorMsg.includes('no remote')) {
+      return {
+        success: false,
+        error: 'No remote configured. Add a remote repository first.'
+      };
+    }
+
     if (errorMsg.includes('timed out')) {
-      return { success: false, error: 'Push operation timed out. Check your network connection.' };
+      return {
+        success: false,
+        error: 'Push timeout: Large repository or slow connection. Try from terminal.'
+      };
     }
 
-    return { success: false, error: error.message };
+    // Return actual Git error for unexpected cases
+    return { success: false, error: errorMsg };
   }
 });
 
