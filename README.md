@@ -273,7 +273,6 @@ Contribuições são o que fazem a comunidade open source ser tão incrível. Qu
 
 ## 💬 Contato
 
-- **Autor**: Lingma
 - **GitHub**: [MatheusMartinho]([https://github.com/seu-usuario](https://github.com/MatheusMartinho))
 - **Email**: matheusmouramartinho@yahoo.com
 - **Website**: 
