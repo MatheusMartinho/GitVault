@@ -51,7 +51,15 @@ function executeGitCommand(command, cwd) {
 // Pull changes
 ipcMain.handle('git:pull', async (event, repoPath) => {
   try {
-    const command = 'git pull';
+    // First check if there's a remote configured
+    try {
+      await executeGitCommand('git remote get-url origin', repoPath);
+    } catch (remoteError) {
+      return { success: false, error: 'No remote repository configured. Add a remote first.' };
+    }
+
+    // Pull with rebase to avoid merge conflicts when possible
+    const command = 'git pull --rebase';
     const result = await executeGitCommand(command, repoPath);
     return { success: true, result };
   } catch (error) {
@@ -62,11 +70,31 @@ ipcMain.handle('git:pull', async (event, repoPath) => {
 // Push changes
 ipcMain.handle('git:push', async (event, repoPath) => {
   try {
-    const command = 'git push';
+    // First check if there's a remote configured
+    try {
+      await executeGitCommand('git remote get-url origin', repoPath);
+    } catch (remoteError) {
+      // If no remote exists, return error
+      return { success: false, error: 'No remote repository configured. Add a remote first.' };
+    }
+
+    // Check if there are commits to push
+    const hasCommits = await executeGitCommand('git log origin/main..HEAD', repoPath).catch(() => '');
+
+    // If no commits to push, try the default push with set-upstream
+    const command = 'git push --set-upstream origin HEAD';
     const result = await executeGitCommand(command, repoPath);
     return { success: true, result };
   } catch (error) {
-    return { success: false, error: error.message };
+    // Try a simpler push command for different repository configurations
+    try {
+      const simpleCommand = 'git push';
+      const simpleResult = await executeGitCommand(simpleCommand, repoPath);
+      return { success: true, result: simpleResult };
+    } catch (simpleError) {
+      // If all else fails, return the original error
+      return { success: false, error: error.message };
+    }
   }
 });
 
