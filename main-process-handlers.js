@@ -35,12 +35,23 @@ async function saveRepositories(repositories) {
   }
 }
 
-// Execute a Git command
-function executeGitCommand(command, cwd) {
+// Execute a Git command with timeout support
+function executeGitCommand(command, cwd, timeout = 30000) {
   return new Promise((resolve, reject) => {
-    exec(command, { cwd }, (error, stdout, stderr) => {
+    const options = {
+      cwd,
+      timeout,
+      maxBuffer: 1024 * 1024 * 10, // 10MB buffer for large outputs
+      killSignal: 'SIGTERM'
+    };
+
+    exec(command, options, (error, stdout, stderr) => {
       if (error) {
-        reject(new Error(stderr || error.message));
+        if (error.killed || error.signal === 'SIGTERM') {
+          reject(new Error(`Command timed out after ${timeout}ms`));
+        } else {
+          reject(new Error(stderr || error.message));
+        }
         return;
       }
       resolve(stdout.trim());
@@ -48,70 +59,58 @@ function executeGitCommand(command, cwd) {
   });
 }
 
-// Pull changes
+// Pull changes - Optimized version
 ipcMain.handle('git:pull', async (event, repoPath) => {
   try {
-    // First check if there's a remote configured
-    try {
-      await executeGitCommand('git remote get-url origin', repoPath);
-    } catch (remoteError) {
+    // Parallelize remote and branch checks
+    const [remoteUrl, branch] = await Promise.all([
+      executeGitCommand('git remote get-url origin', repoPath, 5000).catch(() => null),
+      executeGitCommand('git branch --show-current', repoPath, 5000).catch(() => null)
+    ]);
+
+    // Validate remote
+    if (!remoteUrl) {
       return { success: false, error: 'No remote repository configured. Add a remote first.' };
     }
 
-    // Get current branch
-    let branch;
-    try {
-      branch = await executeGitCommand('git branch --show-current', repoPath);
-      if (!branch || branch === '') {
-        return { success: false, error: 'Not on any branch. Cannot pull.' };
-      }
-    } catch (branchError) {
-      return { success: false, error: 'Error determining current branch.' };
+    // Validate branch
+    if (!branch || branch.trim() === '') {
+      return { success: false, error: 'Not on any branch. Cannot pull.' };
     }
 
-    // Try pull with rebase first to avoid merge commits
+    const currentBranch = branch.trim();
+
+    // Try pull with rebase for cleaner history (60s timeout for large repos)
     try {
-      const command = `git pull --rebase origin ${branch}`;
-      const result = await executeGitCommand(command, repoPath);
+      const result = await executeGitCommand(`git pull --rebase origin ${currentBranch}`, repoPath, 60000);
       return { success: true, result };
     } catch (rebaseError) {
-      // Check if the error is due to unstaged changes
-      if (rebaseError.message.toLowerCase().includes('unstaged changes') ||
-          rebaseError.message.toLowerCase().includes('cannot pull with rebase') ||
-          rebaseError.message.toLowerCase().includes('you have unstaged changes')) {
+      const errorMsg = rebaseError.message.toLowerCase();
 
+      // Handle unstaged changes
+      if (errorMsg.includes('unstaged') || errorMsg.includes('uncommitted')) {
         try {
-          // Stash changes temporarily
-          await executeGitCommand('git stash', repoPath);
-          const command = `git pull --rebase origin ${branch}`;
-          const result = await executeGitCommand(command, repoPath);
-
-          // Try to restore stashed changes (but ignore errors as they're expected if there are conflicts)
-          await executeGitCommand('git stash pop', repoPath).catch(() => {
-            // If pop fails, it means there were conflicts which is expected
-            // We'll return success because the pull completed, and conflicts will need manual resolution
-          });
-
+          await executeGitCommand('git stash', repoPath, 10000);
+          const result = await executeGitCommand(`git pull --rebase origin ${currentBranch}`, repoPath, 60000);
+          await executeGitCommand('git stash pop', repoPath, 10000).catch(() => { });
           return { success: true, result };
         } catch (stashError) {
-          // If stash fails, try normal pull
+          // Fallback to normal pull
           try {
-            const fallbackCommand = `git pull origin ${branch}`;
-            const fallbackResult = await executeGitCommand(fallbackCommand, repoPath);
+            const fallbackResult = await executeGitCommand(`git pull origin ${currentBranch}`, repoPath, 60000);
             return { success: true, result: fallbackResult };
           } catch (normalPullError) {
-            return { success: false, error: `Pull failed. ${normalPullError.message}` };
+            return { success: false, error: normalPullError.message };
           }
         }
       }
 
-      // For other rebase errors, try a normal pull
+      // Try normal pull as fallback
       try {
-        const fallbackCommand = `git pull origin ${branch}`;
-        const fallbackResult = await executeGitCommand(fallbackCommand, repoPath);
+        const fallbackResult = await executeGitCommand(`git pull origin ${currentBranch}`, repoPath, 60000);
         return { success: true, result: fallbackResult };
       } catch (fallbackError) {
-        return { success: false, error: `Pull failed. ${rebaseError.message}. Fallback also failed: ${fallbackError.message}` };
+        return { success: false, error: fallbackError.message };
       }
     }
   } catch (error) {
@@ -119,103 +118,80 @@ ipcMain.handle('git:pull', async (event, repoPath) => {
   }
 });
 
-// Push changes
+// Push changes - Optimized version
 ipcMain.handle('git:push', async (event, repoPath) => {
   try {
-    console.log(`Attempting push to repo: ${repoPath}`);
+    // Parallelize remote and branch checks for better performance
+    const [remotes, branch] = await Promise.all([
+      executeGitCommand('git remote', repoPath, 5000).catch(() => ''),
+      executeGitCommand('git branch --show-current', repoPath, 5000).catch(() => '')
+    ]);
 
-    // First check if there's a remote configured
-    try {
-      const remotes = await executeGitCommand('git remote', repoPath);
-      console.log(`Available remotes: ${remotes}`);
-      if (!remotes || !remotes.includes('origin')) {
-        return { success: false, error: 'No remote repository named "origin" configured. Add a remote first.' };
-      }
-    } catch (remoteError) {
-      console.error('Remote check failed:', remoteError.message);
-      return { success: false, error: 'No remote repository configured. Add a remote first.' };
+    // Validate remote
+    if (!remotes || !remotes.includes('origin')) {
+      return { success: false, error: 'No remote repository named "origin" configured. Add a remote first.' };
     }
 
-    // Check the current branch
-    let branch;
-    try {
-      branch = await executeGitCommand('git branch --show-current', repoPath);
-      console.log(`Current branch: ${branch}`);
-      if (!branch || branch.trim() === '') {
-        // If we're in detached HEAD state, we can't push
-        return { success: false, error: 'Cannot push from detached HEAD state. Please checkout a branch.' };
-      }
-      branch = branch.trim();
-    } catch (branchError) {
-      console.error('Branch check failed:', branchError.message);
-      return { success: false, error: 'Error determining current branch.' };
+    // Validate branch
+    const currentBranch = branch.trim();
+    if (!currentBranch) {
+      return { success: false, error: 'Cannot push from detached HEAD state. Please checkout a branch.' };
     }
 
-    // Execute the push command
-    const command = `git push origin ${branch}`;
-    console.log(`Executing command: ${command}`);
-    const result = await executeGitCommand(command, repoPath);
-    console.log(`Push result: ${result}`);
+    // Execute push with reasonable timeout (60s for large repos)
+    const result = await executeGitCommand(`git push origin ${currentBranch}`, repoPath, 60000);
     return { success: true, result };
 
   } catch (error) {
-    console.error('Push failed with error:', error.message);
+    const errorMsg = error.message.toLowerCase();
 
-    // Check if the error is because there are uncommitted changes
-    try {
-      const status = await executeGitCommand('git status --porcelain', repoPath);
-      if (status && status.trim() !== '') {
-        return { success: false, error: 'You have uncommitted changes. Please commit them before pushing.' };
-      }
-    } catch (statusError) {
-      console.warn('Could not check git status:', statusError.message);
-    }
-
-    // Check if the error is about upstream branch
-    if (error.message.toLowerCase().includes('upstream') || error.message.toLowerCase().includes('set-upstream')) {
+    // Handle upstream branch not set
+    if (errorMsg.includes('upstream') || errorMsg.includes('set-upstream')) {
       try {
-        // Try to set upstream and push
-        const setCommand = `git push --set-upstream origin ${branch}`;
-        const setResult = await executeGitCommand(setCommand, repoPath);
-        return { success: true, result: setResult };
+        const branch = await executeGitCommand('git branch --show-current', repoPath, 5000);
+        const result = await executeGitCommand(`git push --set-upstream origin ${branch.trim()}`, repoPath, 60000);
+        return { success: true, result };
       } catch (setUpstreamError) {
-        return { success: false, error: 'Branch has no upstream. Set upstream first or commit changes before pushing.' };
+        return { success: false, error: 'Failed to set upstream branch.' };
       }
     }
 
-    // Check if the error is about rejected push (need to pull first)
-    if (error.message.toLowerCase().includes('rejected') || error.message.toLowerCase().includes('non-fast-forward')) {
+    // Handle rejected push
+    if (errorMsg.includes('rejected') || errorMsg.includes('non-fast-forward')) {
       return { success: false, error: 'Push rejected. Remote repository has newer commits. Please pull changes first.' };
     }
 
-    // Check if the error is about authentication
-    if (error.message.toLowerCase().includes('denied') || error.message.toLowerCase().includes('authentication')) {
-      return { success: false, error: 'Push denied. Check your authentication.' };
+    // Handle authentication errors
+    if (errorMsg.includes('denied') || errorMsg.includes('authentication')) {
+      return { success: false, error: 'Authentication failed. Check your credentials.' };
     }
 
-    // For other errors, return the original message
+    // Handle timeout
+    if (errorMsg.includes('timed out')) {
+      return { success: false, error: 'Push operation timed out. Check your network connection.' };
+    }
+
     return { success: false, error: error.message };
   }
 });
 
-// Get repository status
+// Get repository status - Optimized
 ipcMain.handle('git:status', async (event, repoPath) => {
   try {
-    // Get status in porcelain format for easier parsing
-    const statusOutput = await executeGitCommand('git status --porcelain', repoPath);
+    const statusOutput = await executeGitCommand('git status --porcelain', repoPath, 5000);
 
     if (!statusOutput) {
       return [];
     }
 
-    const changes = statusOutput.split('\n').map(line => {
+    const changes = statusOutput.split('\n').filter(line => line.trim()).map(line => {
       const status = line.substring(0, 2).trim();
       const file = line.substring(3).trim();
 
       let statusText = 'modified';
-      if (status === 'A') statusText = 'added';
-      if (status === 'D') statusText = 'deleted';
-      if (status === 'M') statusText = 'modified';
+      if (status === 'A' || status.includes('A')) statusText = 'added';
+      if (status === 'D' || status.includes('D')) statusText = 'deleted';
+      if (status === 'M' || status.includes('M')) statusText = 'modified';
       if (status === '??') statusText = 'untracked';
 
       return { file, status: statusText };
@@ -227,19 +203,20 @@ ipcMain.handle('git:status', async (event, repoPath) => {
   }
 });
 
-// Get commit log
+// Get commit log - Optimized
 ipcMain.handle('git:log', async (event, repoPath) => {
   try {
     const logOutput = await executeGitCommand(
       'git log --pretty=format:"%H|%an|%ad|%s" --date=short -20',
-      repoPath
+      repoPath,
+      10000
     );
 
     if (!logOutput) {
       return [];
     }
 
-    const commits = logOutput.split('\n').map(line => {
+    const commits = logOutput.split('\n').filter(line => line.trim()).map(line => {
       const [hash, author, date, message] = line.split('|');
       return { hash, author, date, message };
     });
@@ -250,10 +227,10 @@ ipcMain.handle('git:log', async (event, repoPath) => {
   }
 });
 
-// Get branches
+// Get branches - Optimized
 ipcMain.handle('git:branches', async (event, repoPath) => {
   try {
-    const branchesOutput = await executeGitCommand('git branch -a', repoPath);
+    const branchesOutput = await executeGitCommand('git branch -a', repoPath, 5000);
 
     if (!branchesOutput) {
       return [];
@@ -270,24 +247,34 @@ ipcMain.handle('git:branches', async (event, repoPath) => {
   }
 });
 
-// Add files to staging (git add)
+// Add files to staging (git add) - Optimized
 ipcMain.handle('git:add', async (event, repoPath) => {
   try {
-    const command = 'git add .';
-    await executeGitCommand(command, repoPath);
+    await executeGitCommand('git add .', repoPath, 10000);
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
   }
 });
 
-// Commit changes
+// Commit changes - Optimized version
 ipcMain.handle('git:commit', async (event, repoPath, message) => {
   try {
-    const command = `git commit -m "${message.replace(/"/g, '\\"')}"`;
-    const result = await executeGitCommand(command, repoPath);
+    // Escape message properly and execute with timeout
+    const escapedMessage = message.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+    const command = `git commit -m "${escapedMessage}"`;
+    const result = await executeGitCommand(command, repoPath, 10000);
     return { success: true, result };
   } catch (error) {
+    const errorMsg = error.message.toLowerCase();
+
+    // Provide better error messages
+    if (errorMsg.includes('nothing to commit')) {
+      return { success: false, error: 'No changes staged for commit. Use git add first.' };
+    }
+    if (errorMsg.includes('timed out')) {
+      return { success: false, error: 'Commit operation timed out.' };
+    }
     return { success: false, error: error.message };
   }
 });
@@ -310,28 +297,28 @@ ipcMain.handle('repositories:add', async (event, repoPath) => {
     if (!(await fs.pathExists(gitDir))) {
       return { success: false, error: 'Not a Git repository' };
     }
-    
+
     // Get repository name from folder name
     const name = path.basename(repoPath);
-    
+
     // Load existing repositories
     const repositories = await loadRepositories();
-    
+
     // Check if repository already exists
     const exists = repositories.some(repo => repo.path === repoPath);
     if (exists) {
       return { success: false, error: 'Repository already added' };
     }
-    
+
     // Add new repository
     repositories.push({ name, path: repoPath });
-    
+
     // Save repositories
     const saved = await saveRepositories(repositories);
     if (!saved) {
       return { success: false, error: 'Failed to save repository' };
     }
-    
+
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
@@ -370,7 +357,7 @@ ipcMain.on('notification:show', (event, title, body) => {
     title,
     body
   });
-  
+
   notification.show();
 });
 
