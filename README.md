@@ -1,5 +1,4 @@
 # 🏛️ GitVault - Your Secure Git Repository Manager
-<img width="1195" height="769" alt="image" src="https://github.com/user-attachments/assets/aa251be7-39fb-46b8-98ad-935eaf7be34e" />
 
 <div align="center">
 
@@ -10,7 +9,7 @@
 
 **O gerenciador de repositórios Git desktop mais poderoso e intuitivo**
 
-<img src="https://github.com/user-attachments/assets/0f5b6f7c-8f09-4e6c-b5e9-84c5f0b6b1a8" alt="GitVault Interface" width="800"/>
+<img width="1196" height="768" alt="image" src="https://github.com/user-attachments/assets/ed5c34e1-54b5-4f8e-9897-dfeaa1aef4b3" />
 
 </div>
 
