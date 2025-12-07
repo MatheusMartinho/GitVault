@@ -1,5 +1,6 @@
 # 🏛️ GitVault - Your Secure Git Repository Manager
-<img width="1195" height="769" alt="image" src="https://github.com/user-attachments/assets/aa251be7-39fb-46b8-98ad-935eaf7be34e" />
+<img width="1196" height="768" alt="image" src="https://github.com/user-attachments/assets/ed5c34e1-54b5-4f8e-9897-dfeaa1aef4b3" />
+
 
 <div align="center">
 
