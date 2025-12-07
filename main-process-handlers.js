@@ -67,11 +67,11 @@ ipcMain.handle('git:pull', async (event, repoPath) => {
     return { success: true, result: result.output || 'Pull completed' };
   } catch (error) {
     const errorType = classifyGitError(error.message);
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: getHumanReadableError(errorType, error.message),
       errorType,
-      details: error.message 
+      details: error.message
     };
   }
 });
@@ -86,10 +86,10 @@ ipcMain.handle('git:push', async (event, repoPath) => {
   try {
     // Quick validation: check remote exists (fast, low memory)
     const remotes = await runGit(['remote'], repoPath, 5000).catch(() => '');
-    
+
     if (!remotes || !remotes.includes('origin')) {
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: 'No remote repository configured. Add a remote first.',
         errorType: 'NO_REMOTE'
       };
@@ -106,16 +106,16 @@ ipcMain.handle('git:push', async (event, repoPath) => {
       { timeout: 120000 } // 2 min timeout for large repos
     );
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       result: result.output || 'Push completed successfully',
-      branch 
+      branch
     };
 
   } catch (error) {
     const errorType = classifyGitError(error.message);
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: getHumanReadableError(errorType, error.message),
       errorType,
       details: error.message
@@ -131,14 +131,14 @@ ipcMain.handle('git:push', async (event, repoPath) => {
  */
 function runGitStream(args, cwd, options = {}) {
   const { timeout = 60000, onProgress = null } = options;
-  
+
   return new Promise((resolve, reject) => {
     const stdoutChunks = [];
     const stderrChunks = [];
     let stdoutSize = 0;
     let stderrSize = 0;
     const MAX_BUFFER = 512 * 1024; // 512KB max per stream
-    
+
     const gitProcess = spawn('git', args, {
       cwd,
       env: {
@@ -192,10 +192,10 @@ function runGitStream(args, cwd, options = {}) {
 
     gitProcess.on('close', (code, signal) => {
       if (timeoutId) clearTimeout(timeoutId);
-      
+
       const stdout = Buffer.concat(stdoutChunks).toString('utf8').trim();
       const stderr = Buffer.concat(stderrChunks).toString('utf8').trim();
-      
+
       // Clean up references
       stdoutChunks.length = 0;
       stderrChunks.length = 0;
@@ -226,43 +226,43 @@ function runGitStream(args, cwd, options = {}) {
  */
 function classifyGitError(message) {
   const msg = message.toLowerCase();
-  
+
   // Network errors
-  if (msg.includes('could not resolve host') || 
-      msg.includes('unable to access') ||
-      msg.includes('connection refused') ||
-      msg.includes('network is unreachable') ||
-      msg.includes('timed out') ||
-      msg.includes('timeout')) {
+  if (msg.includes('could not resolve host') ||
+    msg.includes('unable to access') ||
+    msg.includes('connection refused') ||
+    msg.includes('network is unreachable') ||
+    msg.includes('timed out') ||
+    msg.includes('timeout')) {
     return 'NETWORK_ERROR';
   }
-  
+
   // Authentication errors
   if (msg.includes('authentication failed') ||
-      msg.includes('permission denied') ||
-      msg.includes('could not read from remote') ||
-      msg.includes('invalid credentials') ||
-      msg.includes('denied') ||
-      msg.includes('403') ||
-      msg.includes('401')) {
+    msg.includes('permission denied') ||
+    msg.includes('could not read from remote') ||
+    msg.includes('invalid credentials') ||
+    msg.includes('denied') ||
+    msg.includes('403') ||
+    msg.includes('401')) {
     return 'AUTH_ERROR';
   }
-  
+
   // Conflict/rejection errors
   if (msg.includes('rejected') ||
-      msg.includes('non-fast-forward') ||
-      msg.includes('fetch first') ||
-      msg.includes('cannot lock ref')) {
+    msg.includes('non-fast-forward') ||
+    msg.includes('fetch first') ||
+    msg.includes('cannot lock ref')) {
     return 'CONFLICT_ERROR';
   }
-  
+
   // Upstream not set
   if (msg.includes('no upstream') ||
-      msg.includes('does not have a commit checked out') ||
-      msg.includes('no tracking information')) {
+    msg.includes('does not have a commit checked out') ||
+    msg.includes('no tracking information')) {
     return 'NO_UPSTREAM';
   }
-  
+
   return 'UNKNOWN_ERROR';
 }
 
@@ -291,14 +291,17 @@ ipcMain.handle('git:status', async (event, repoPath) => {
     }
 
     const changes = statusOutput.split('\n').filter(line => line.trim()).map(line => {
-      const status = line.substring(0, 2).trim();
-      const file = line.substring(3).trim();
+      // Format: XY filename (first 2 chars are status, then space, then filename)
+      // But some entries might have -> for renames
+      const statusCode = line.substring(0, 2);
+      const file = line.slice(3); // slice instead of substring to handle edge cases
 
       let statusText = 'modified';
-      if (status === 'A' || status.includes('A')) statusText = 'added';
-      if (status === 'D' || status.includes('D')) statusText = 'deleted';
-      if (status === 'M' || status.includes('M')) statusText = 'modified';
-      if (status === '??') statusText = 'untracked';
+      if (statusCode.includes('A')) statusText = 'added';
+      if (statusCode.includes('D')) statusText = 'deleted';
+      if (statusCode.includes('M')) statusText = 'modified';
+      if (statusCode === '??') statusText = 'untracked';
+      if (statusCode.includes('R')) statusText = 'renamed';
 
       return { file, status: statusText };
     });

@@ -77,8 +77,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "seu-usuario",
-        "repo": "gitvault",
+        "owner": "MatheusMartinho",
+        "repo": "GitVault",
         "vPrefixedTagName": true
       }
     ],
