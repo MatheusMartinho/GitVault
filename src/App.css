@@ -81,7 +81,7 @@ body::after {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 20px;
+  padding: 0 20px;
   background: var(--hud-panel);
   border: 1px solid var(--hud-border);
   /* Tech Corners */
