@@ -291,10 +291,15 @@ ipcMain.handle('git:status', async (event, repoPath) => {
     }
 
     const changes = statusOutput.split('\n').filter(line => line.trim()).map(line => {
-      // Format: XY filename (first 2 chars are status, then space, then filename)
-      // But some entries might have -> for renames
-      const statusCode = line.substring(0, 2);
-      const file = line.slice(3); // slice instead of substring to handle edge cases
+      // Git status --porcelain format: XY FILENAME
+      // X = index status, Y = worktree status
+      // Use regex to properly capture: 2 chars + space + filename
+      const match = line.match(/^(.{2})\s(.+)$/);
+
+      if (!match) return null;
+
+      const statusCode = match[1];
+      const file = match[2];
 
       let statusText = 'modified';
       if (statusCode.includes('A')) statusText = 'added';
@@ -304,7 +309,7 @@ ipcMain.handle('git:status', async (event, repoPath) => {
       if (statusCode.includes('R')) statusText = 'renamed';
 
       return { file, status: statusText };
-    });
+    }).filter(Boolean);
 
     return changes;
   } catch (error) {

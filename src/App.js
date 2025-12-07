@@ -24,6 +24,29 @@ function App() {
     loadRepositories();
   }, []);
 
+  // Auto-refresh: Poll for changes in active repository every 3 seconds
+  useEffect(() => {
+    if (!activeRepo) return;
+
+    const refreshChanges = async () => {
+      try {
+        const statusData = await window.electronAPI.gitStatus(activeRepo.path);
+        setChanges(statusData);
+      } catch (error) {
+        // Silently fail - don't disrupt user experience
+      }
+    };
+
+    // Initial refresh
+    refreshChanges();
+
+    // Set up polling interval
+    const intervalId = setInterval(refreshChanges, 3000);
+
+    // Cleanup on unmount or when activeRepo changes
+    return () => clearInterval(intervalId);
+  }, [activeRepo]);
+
   // Setup update listeners
   useEffect(() => {
     // Listen for update checking
