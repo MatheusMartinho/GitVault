@@ -22,7 +22,7 @@
     "react",
     "vault"
   ],
-  "author": "Lingma",
+  "author": "Matheus Martinho <matheusmouramartinho@hotmail.com>",
   "license": "MIT",
   "dependencies": {
     "axios": "^1.0.0",
