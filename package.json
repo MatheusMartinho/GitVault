@@ -110,7 +110,7 @@
         "nsis",
         "zip"
       ],
-      "icon": "public/icon.ico"
+      "icon": "public/icon.png"
     },
     "linux": {
       "target": [
